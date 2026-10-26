@@ -68,9 +68,9 @@ function LegRow({ leg, onPick }: { leg: ResolvedLeg; onPick: (j: number) => void
   );
 }
 
-interface Props { legs: ResolvedLeg[]; label: string; filter: "all" | ModeKey; setFilter: (f: "all" | ModeKey) => void; pick: (legKey: string, j: number) => void; warnings: string[] }
+interface Props { legs: ResolvedLeg[]; label: string; filter: "all" | ModeKey; setFilter: (f: "all" | ModeKey) => void; pick: (legKey: string, j: number) => void }
 
-export default function GettingThere({ legs, label, filter, setFilter, pick, warnings }: Props) {
+export default function GettingThere({ legs, label, filter, setFilter, pick }: Props) {
   return (
     <section id="transport" className={s.section}>
       <div className={s.head} style={{ flexWrap: "wrap" }}>
@@ -82,7 +82,6 @@ export default function GettingThere({ legs, label, filter, setFilter, pick, war
           ))}
         </div>
       </div>
-      {warnings.map((w) => <div key={w} className={s.sub}>{w}</div>)}
       <div style={{ display: "flex", flexDirection: "column" }}>
         {legs.map((leg) => <LegRow key={leg.key} leg={leg} onPick={(j) => pick(leg.key, j)} />)}
       </div>

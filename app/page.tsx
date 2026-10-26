@@ -34,7 +34,7 @@ interface Result { q: Query; budget: Budget; itins: Itinerary[]; links: SearchLi
 export default function Home() {
   const [f, setF] = useState({
     from: "", to: "", date: "", endDate: "", travelers: "",
-    budget: "" as Budget | "", interest: "", modes: { flight: true, train: true, bus: true } as Record<ModeKey, boolean>,
+    budget: "" as Budget | "", interests: [] as string[], modes: { flight: true, train: true, bus: true } as Record<ModeKey, boolean>,
   });
   const [itin, setItin] = useState(0);
   const [filter, setFilter] = useState<"all" | ModeKey>("all");
@@ -60,7 +60,7 @@ export default function Home() {
     const q: Query = { from: f.from.trim(), to: f.to.trim(), date: f.date, days };
     try {
       const it = await post<{ itineraries: Itinerary[]; searchLinks: SearchLink[]; notes: string[]; country: boolean }>("/api/itineraries", {
-        from: q.from, to: q.to, date: q.date, days, travelers: Number(f.travelers) || 1, budget: BUDGET_KEY[budget], interests: f.interest, modes: ALL,
+        from: q.from, to: q.to, date: q.date, days, travelers: Number(f.travelers) || 1, budget: BUDGET_KEY[budget], interests: f.interests.join(", "), modes: ALL,
       });
       q.country = it.country;
       // One transport search per distinct journey across all itineraries (outbound, between cities, return).
@@ -108,7 +108,7 @@ export default function Home() {
             <ItineraryList itins={res.itins} itin={itin} setItin={(i) => { setItin(i); setBooked(false); }} days={res.q.days} city={d.city}
               budget={res.budget} date={res.q.date} links={res.links} notes={res.notes} />
             <GettingThere
-              legs={d.legs} filter={filter} setFilter={setFilter} warnings={res.warnings}
+              legs={d.legs} filter={filter} setFilter={setFilter}
               label={`${d.legs.length} legs for ${res.itins[itin].title} · ${d.home} → ${d.city} → ${d.home}`}
               pick={(key, j) => { setSel({ ...sel, [d.selKey(key)]: j }); setBooked(false); }}
             />

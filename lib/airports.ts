@@ -1,5 +1,5 @@
 import { CITIES } from "./options";
-import { distanceKm, geocode } from "./geo";
+import { distanceKm, geocode, placeKind } from "./geo";
 
 export interface Resolved { code: string; name: string }
 
@@ -18,6 +18,7 @@ async function amadeusToken(base: string, id: string, secret: string) {
   return token.value;
 }
 
+const MAIN = new Set(["DEL", "HND", "LHR", "CDG", "FCO", "BKK", "DXB", "JFK", "SIN", "AMS", "BCN"]); // preferred gateway per country
 const cache = new Map<string, Resolved | null>();
 const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
@@ -60,9 +61,15 @@ export async function resolveIata(place: string): Promise<Resolved | null> {
   if (!out) {
     // Any other city: use the nearest known airport city within driving distance.
     const g = await geocode(place);
-    if (g) {
+    const kind = g ? await placeKind(place) : "city";
+    if (g && kind === "country") {
+      // Whole country: use its main listed airport city.
+      const inCountry = CITIES.filter((x) => norm(x.country) === norm(g.country));
+      const c = inCountry.find((x) => MAIN.has(x.code)) ?? inCountry[0];
+      if (c) out = { code: c.code, name: c.name };
+    } else if (g) {
       const near = CITIES.map((c) => ({ c, d: distanceKm(g, c) })).sort((a, b) => a.d - b.d)[0];
-      if (near && near.d <= 200) out = { code: near.c.code, name: near.c.name };
+      if (near && near.d <= (kind === "region" ? 400 : 200)) out = { code: near.c.code, name: near.c.name };
     }
   }
   cache.set(place, out);

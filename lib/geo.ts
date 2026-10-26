@@ -12,10 +12,12 @@ const KINDS: Record<string, PlaceKind> = { city: "city", county: "region", state
 
 interface Feature { name: string; type: string; kind: PlaceKind; county?: string; state?: string; country: string; countryCode: string; lat: number; lon: number }
 
-/** Photon (OpenStreetMap) search restricted to administrative places: cities, counties, states, countries. */
-async function lookup(q: string, limit: number): Promise<Feature[]> {
-  const res = await fetch(`${BASE}?q=${encodeURIComponent(q)}&osm_tag=place&limit=${limit}&lang=en`, { headers: { "User-Agent": "trip-planner" } });
-  if (!res.ok) throw new Error(`Geocoding failed: ${res.status}`);
+const RANK: Record<PlaceKind, number> = { country: 0, region: 1, city: 2 };
+const UA = { "User-Agent": "trip-planner" };
+
+async function photon(q: string, limit: number): Promise<Feature[]> {
+  const res = await fetch(`${BASE}?q=${encodeURIComponent(q)}&osm_tag=place&limit=${limit}&lang=en`, { headers: UA });
+  if (!res.ok) throw new Error(`Photon failed: ${res.status}`);
   const out: Feature[] = [];
   for (const f of (await res.json()).features ?? []) {
     const p = f.properties ?? {};
@@ -24,6 +26,40 @@ async function lookup(q: string, limit: number): Promise<Feature[]> {
     out.push({ name: p.name, type: p.type, kind, county: p.county, state: p.state, country: p.country, countryCode: String(p.countrycode ?? ""), lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] });
   }
   return out;
+}
+
+/** Fallback when Photon is down: Open-Meteo (prefix match on cities/countries) + Nominatim (states, counties, exact names). */
+async function fallback(q: string, limit: number): Promise<Feature[]> {
+  const [om, nom] = await Promise.allSettled([
+    fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=${limit}&language=en`).then((r) => r.json()),
+    fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=jsonv2&addressdetails=1&limit=${limit}&accept-language=en`, { headers: UA }).then((r) => r.json()),
+  ]);
+  const out: Feature[] = [];
+  if (om.status === "fulfilled") {
+    for (const r of om.value.results ?? []) {
+      const type = r.feature_code === "PCLI" ? "country" : r.feature_code === "ADM1" ? "state" : r.feature_code === "ADM2" ? "county" : String(r.feature_code).startsWith("PPL") ? "city" : "";
+      if (!type || !r.country) continue;
+      out.push({ name: r.name, type, kind: KINDS[type], state: r.admin1, county: r.admin2, country: r.country, countryCode: String(r.country_code ?? "").toLowerCase(), lat: r.latitude, lon: r.longitude });
+    }
+  }
+  if (nom.status === "fulfilled" && Array.isArray(nom.value)) {
+    const T: Record<string, string> = { city: "city", town: "city", village: "city", municipality: "city", county: "county", state: "state", region: "state", country: "country" };
+    for (const r of nom.value) {
+      const type = T[r.addresstype];
+      const a = r.address ?? {};
+      if (r.category !== "place" && r.category !== "boundary") continue; // skip airports, shops, buildings
+      if (!type || !a.country) continue;
+      out.push({ name: r.name, type, kind: KINDS[type], state: a.state, county: type === "city" ? a.county : undefined, country: a.country, countryCode: String(a.country_code ?? ""), lat: Number(r.lat), lon: Number(r.lon) });
+    }
+  }
+  if (!out.length && om.status === "rejected" && nom.status === "rejected") throw new Error("All geocoders failed");
+  return out;
+}
+
+/** Cities, counties, states and countries. Photon first (best prefix matching), fallbacks if it is unreachable. */
+async function lookup(q: string, limit: number): Promise<Feature[]> {
+  try { return await photon(q, limit); }
+  catch (e) { console.error("Photon unavailable, using fallback geocoders:", (e as Error).message); return fallback(q, limit); }
 }
 
 /** "Kyoto, Kyoto Prefecture, Japan" / "Rajasthan, India" / "Japan". */
@@ -37,7 +73,11 @@ const subOf = (f: Feature) => ({ city: undefined, county: "County", state: "Stat
 export async function searchPlaces(q: string): Promise<PlaceHit[]> {
   try {
     const seen = new Set<string>();
-    return (await lookup(q, 15)).map((f) => ({ value: label(f), sub: subOf(f) }))
+    const norm = (x: string) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const ql = norm(q.trim());
+    // Names starting with what was typed first, then countries, regions, cities (stable within each group).
+    const rows = (await lookup(q, 15)).map((f, i) => ({ f, i, pre: norm(f.name).startsWith(ql) ? 0 : 1 })).sort((a, b) => a.pre - b.pre || RANK[a.f.kind] - RANK[b.f.kind] || a.i - b.i).map((x) => x.f);
+    return rows.map((f) => ({ value: label(f), sub: subOf(f) }))
       .filter((h) => !seen.has(h.value) && !!seen.add(h.value)).slice(0, 8);
   } catch (e) {
     console.error("Place search failed:", e);

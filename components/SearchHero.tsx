@@ -6,9 +6,9 @@ import Autocomplete, { type Suggestion } from "./Autocomplete";
 import s from "./ui.module.css";
 
 export interface HeroProps {
-  from: string; to: string; date: string; endDate: string; travelers: number | string; budget: Budget | ""; interest: string;
+  from: string; to: string; date: string; endDate: string; travelers: number | string; budget: Budget | ""; interests: string[];
   modes: Record<ModeKey, boolean>; days: number;
-  set: (patch: Partial<{ from: string; to: string; endDate: string; travelers: string; budget: Budget | ""; interest: string }>) => void;
+  set: (patch: Partial<{ from: string; to: string; endDate: string; travelers: string; budget: Budget | ""; interests: string[] }>) => void;
   setDate: (v: string) => void; toggleMode: (m: ModeKey) => void; onSearch: () => void; fetchFrom: (q: string) => Promise<Suggestion[]>; fetchTo: (q: string) => Promise<Suggestion[]>; onPick: (field: "from" | "to", v: string) => void; busy: boolean; error: string; stale: boolean;
 }
 
@@ -45,7 +45,20 @@ export default function SearchHero(p: HeroProps) {
             ))}
           </div>
         </div>
-        <Autocomplete className={s.span2} label="Interest" placeholder="Beaches, food, temples…" value={p.interest} onChange={(v) => p.set({ interest: v })} suggestions={INTERESTS.map((value) => ({ value }))} />
+        <div className={`field ${s.span2}`} style={{ gridColumn: "1 / -1" }}>
+          <label>Interests{p.interests.length ? ` · ${p.interests.length} selected` : " · pick any"}</label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {INTERESTS.map((i) => {
+              const on = p.interests.includes(i);
+              return (
+                <button key={i} type="button" aria-pressed={on} className={`btn ${s.pill} ${on ? s.pillOn : s.pillOff}`}
+                  onClick={() => p.set({ interests: on ? p.interests.filter((x) => x !== i) : [...p.interests, i] })}>
+                  {on ? "✓" : "+"} {i}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div className={s.bottom}>
           <span style={{ fontSize: 13, color: "var(--color-neutral-700)" }}>Travel by</span>
           {(["flight", "train", "bus"] as ModeKey[]).map((m) => (
