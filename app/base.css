@@ -1,0 +1,5 @@
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--color-bg); }
+a { color: var(--color-accent-700); }
+a:hover { color: var(--color-accent-600); }
+input[type=number]::-webkit-inner-spin-button { opacity: .4; }
